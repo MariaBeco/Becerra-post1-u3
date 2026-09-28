@@ -73,3 +73,74 @@ A diferencia de D, invocar el comando E sin la lista de bytes inicia un modo int
 Por otro lado, el comando F (Fill) tampoco es adecuado como mecanismo de verificación debido a que es una instrucción de escritura destructiva; su propósito es sobreescribir masivamente un rango de memoria con un patrón determinado, por lo que utilizarlo para inspeccionar terminaría borrando o modificando los datos previamente almacenados.
 
 Finalmente, la razón por la cual D es el único candidato completamente idóneo es que se trata de un comando de solo lectura. A diferencia de R (que permite alterar registros), E (que modifica bytes específicos) y F (que modifica bloques enteros), D únicamente lee la memoria principal y la traslada a la pantalla en formato hexadecimal y ASCII, garantizando que el estado de los registros, las banderas y la memoria permanezcan intactos durante la inspección.
+
+## Parte 2: Ejecución Paso a Paso y Análisis de Traza
+
+### Parte A — Programa de Suma con Traza Completa
+
+#### Paso 1 y 2: Preparación del Entorno y Ensamblado del Programa
+Se configuró la subcarpeta de trabajo `LAB3POST2` en la unidad virtual `C:` de DOSBox y se procedió a ensamblar en la dirección `0100h` un programa que realiza la suma de tres operandos almacenados en registros de propósito general.
+
+Paso,Instrucción Ejecutada,AX,BX,CX,IP Sig.,ZF (Zero),CF (Carry),SF (Sign)
+Inicio,(Estado Inicial),0000,0000,0000,0100,NZ (0),NC (0),PL (0)
+1,"MOV AX, 000A",000A,0000,0000,0103,NZ (0),NC (0),PL (0)
+2,"MOV BX, 0005",000A,0005,0000,0106,NZ (0),NC (0),PL (0)
+3,"MOV CX, 0003",000A,0005,0003,0109,NZ (0),NC (0),PL (0)
+4,"ADD AX, BX",000F,0005,0003,010B,NZ (0),NC (0),PL (0)
+5,"ADD AX, CX",0012,0005,0003,010D,NZ (0),NC (0),PL (0)
+
+### Parte B — Programa con Bucle usando LOOP y CX
+#### Paso 5 y 6: Ensamblado y Verificación del Bucle
+Se procedió a ensamblar en la dirección `0100h` un programa que implementa un bucle mediante la instrucción `LOOP`, utilizando el registro `CX` como contador de iteraciones para realizar la suma repetitiva del valor `0002h` cuatro veces consecutivas:
+
+```text
+-A 100
+1357:0100 MOV AX, 0000
+1357:0103 MOV CX, 0004
+1357:0106 ADD AX, 0002
+1357:0109 LOOP 0106
+1357:010B INT 20
+```
+
+Paso / Iteración,Instrucción Ejecutada,AX después,CX después,IP Sig.,¿LOOP salta?
+Inicio,"MOV AX, 0000",0000,0004,0103,N/A
+Inicio,"MOV CX, 0004",0000,0004,0106,N/A
+Iteración 1,"ADD AX, 0002",0002,0004,0109,N/A
+Iteración 1,LOOP 0106,0002,0003,0106,Sí (CX=0)
+Iteración 2,"ADD AX, 0002",0004,0003,0109,N/A
+Iteración 2,LOOP 0106,0004,0002,0106,Sí (CX=0)
+Iteración 3,"ADD AX, 0002",0006,0002,0109,N/A
+Iteración 3,LOOP 0106,0006,0001,0106,Sí (CX=0)
+Iteración 4,"ADD AX, 0002",0008,0001,0109,N/A
+Iteración 4,LOOP 0106,0008,0000,010B,No (CX=0)
+Final,INT 20,0008,0000,--,Program terminated
+
+### Parte C — Análisis del Código Máquina con D
+
+#### Paso 8: Comparación de Código Máquina y Ensamblador
+Se utilizó el comando `D` sobre el segmento de código del programa del bucle (`CS:100 L0C`) para inspeccionar la codificación hexadecimal directa de las instrucciones:
+
+```text
+-D CS:100 L0C
+1357:0100  B8 00 00 B9 04 00 05 02-00 E2 FB CD 20
+```
+
+B8 00 00  
+MOV AX, 0000 (3 bytes)B9 04 00 
+MOV CX, 0004 (3 bytes)05 02 00 
+ADD AX, 0002 (3 bytes)E2 FB 
+LOOP 0106 (2 bytes)CD 20 
+INT 20 (2 bytes)
+
+El programa completo ocupa un total de 13 bytes en memoria. Se evidencia cómo instrucciones complejas como LOOP logran empaquetar en tan solo 2 bytes operaciones que de otro modo requerirían múltiples instrucciones.
+
+### Parte D — Bucle Equivalente con DEC/JNZ y Comparación de Costo de Instrucciones
+### Paso 9: Ensamblado y Verificación del Bucle Equivalente
+Se ensambló en la dirección 0200h una versión equivalente del bucle que sustituye la instrucción LOOP por la combinación manual de decremento de registro DEC CX y salto condicional JNZ
+
+### Paso 10: Decisión Técnica — Selección de Mecanismo de Control de Bucle (LOOP vs. DEC/JNZ)
+Para un bucle contador simple donde el registro CX se utiliza únicamente como control de iteraciones, se recomienda el uso de la instrucción LOOP. Esta recomendación se justifica en la optimización del código máquina: LOOP requiere únicamente 2 bytes (E2 FB), mientras que la alternativa mediante DEC CX y JNZ suma 3 bytes (49 75 FA). Adicionalmente, LOOP requiere que la unidad de control del procesador realice un solo ciclo de búsqueda (fetch) por iteración en lugar de dos, reduciendo el tráfico en el bus de instrucciones.
+
+Sin embargo, el mecanismo DEC/JNZ es preferible en escenarios más complejos. Por ejemplo, si dentro del cuerpo del bucle se requiere reutilizar el registro CX para operaciones aritméticas u otros fines, el conteo no dependería exclusivamente de CX (pudiéndose usar otro registro como BX con DEC BX). También es indispensable cuando la condición de salida no es simplemente un conteo regresivo a cero, sino el resultado de una comparación lógica explícita mediante la instrucción CMP evaluando diferentes banderas (como Carry Flag o Sign Flag).
+
+Para verificar cuál versión ocupa menos bytes sin ejecutar ninguna instrucción, el estudiante utiliza el comando U (Unassemble). Al inspeccionar la columna de offsets en la salida del desensamblado, se calcula la diferencia entre la dirección de la primera instrucción del bucle y la dirección inmediatamente posterior. En LOOP la diferencia de direcciones confirma 2 bytes de ocupación frente a los 3 bytes visibles entre DEC y JNZ.

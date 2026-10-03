@@ -144,3 +144,43 @@ Para un bucle contador simple donde el registro CX se utiliza únicamente como c
 Sin embargo, el mecanismo DEC/JNZ es preferible en escenarios más complejos. Por ejemplo, si dentro del cuerpo del bucle se requiere reutilizar el registro CX para operaciones aritméticas u otros fines, el conteo no dependería exclusivamente de CX (pudiéndose usar otro registro como BX con DEC BX). También es indispensable cuando la condición de salida no es simplemente un conteo regresivo a cero, sino el resultado de una comparación lógica explícita mediante la instrucción CMP evaluando diferentes banderas (como Carry Flag o Sign Flag).
 
 Para verificar cuál versión ocupa menos bytes sin ejecutar ninguna instrucción, el estudiante utiliza el comando U (Unassemble). Al inspeccionar la columna de offsets en la salida del desensamblado, se calcula la diferencia entre la dirección de la primera instrucción del bucle y la dirección inmediatamente posterior. En LOOP la diferencia de direcciones confirma 2 bytes de ocupación frente a los 3 bytes visibles entre DEC y JNZ.
+
+### Parte E — Bucle Equivalente con DEC/JNZ y Comando G
+
+#### Paso 11: Traza del Bucle DEC/JNZ y Conteo Comparativo de Instrucciones
+Se realizó la traza instrucción a instrucción mediante el comando `T` para evaluar la ejecución del bucle implementado con `DEC CX` y `JNZ 0206`.
+
+#### Tabla de Traza del Bucle DEC/JNZ:
+
+| Paso | Instrucción Ejecutada | AX después | CX después | IP Sig. | ¿JNZ salta? |
+| :---: | :--- | :---: | :---: | :---: | :---: |
+| **Inicio** | `MOV AX, 0000` | `0000` | `0004` | `0203` | N/A |
+| **Inicio** | `MOV CX, 0004` | `0000` | `0004` | `0206` | N/A |
+| **Iteración 1** | `ADD AX, 0002` | `0002` | `0004` | `0209` | N/A |
+| **Iteración 1** | `DEC CX` | `0002` | `0003` | `020A` | N/A |
+| **Iteración 1** | `JNZ 0206` | `0002` | `0003` | `0206` | Sí ($ZF = 0$) |
+| **Iteración 2** | `ADD AX, 0002` | `0004` | `0003` | `0209` | N/A |
+| **Iteración 2** | `DEC CX` | `0004` | `0002` | `020A` | N/A |
+| **Iteración 2** | `JNZ 0206` | `0004` | `0002` | `0206` | Sí ($ZF = 0$) |
+| **Iteración 3** | `ADD AX, 0002` | `0006` | `0002` | `0209` | N/A |
+| **Iteración 3** | `DEC CX` | `0006` | `0001` | `020A` | N/A |
+| **Iteración 3** | `JNZ 0206` | `0006` | `0001` | `0206` | Sí ($ZF = 0$) |
+| **Iteración 4** | `ADD AX, 0002` | `0008` | `0001` | `0209` | N/A |
+| **Iteración 4** | `DEC CX` | `0008` | `0000` | `020A` | N/A |
+| **Iteración 4** | `JNZ 0206` | `0008` | `0000` | `020C` | **No** ($ZF = 1$) |
+| **Final** | `INT 20` | `0008` | `0000` | `--` | Program terminated |
+
+#### Conteo Comparado de Instrucciones Ejecutadas:
+* **Versión con `LOOP`:** Ejecuta un total de **11 instrucciones** (2 de inicialización + 4 × 2 del bloque interno + 1 de terminación).
+* **Versión con `DEC/JNZ`:** Ejecuta un total de **15 instrucciones** (2 de inicialización + 4 × 3 del bloque interno + 1 de terminación).
+* **Conclusión:** El mecanismo `DEC/JNZ` requiere **4 instrucciones adicionales** para completar el mismo número de iteraciones (una instrucción extra por ciclo).
+
+---
+
+#### Paso 12: Decisión Técnica — Comando de Verificación para Bucles de Muchas Iteraciones (T vs. G)
+
+Para bucles de muchas iteraciones (como $CX = 100$), el uso del comando **`G` (Go)** es drásticamente más práctico que `T`, ya que ejecuta el programa a velocidad real del procesador hasta alcanzar la dirección de parada indicada (ej. `G 20C`), ahorrando la ejecución manual de cientos de comandos `T`. La desventaja principal de utilizar `G` es la pérdida total de visibilidad sobre los estados intermedios del programa: no es posible observar la evolución gradual de los registros, el decremento paso a paso del contador ni los cambios temporales en las banderas de condición.
+
+El uso de **`T`** fue indispensable en los Pasos 4, 7 y 11 del laboratorio debido a que el objetivo didáctico era analizar el comportamiento detallado del microprocesador e inspeccionar el estado exacto de los registros tras cada instrucción individual para completar las tablas de traza.
+
+Tras ejecutar `G 20C`, si el estudiante desea verificar únicamente el valor del registro `AX` sin inspeccionar los demás componentes, puede ejecutar el comando específico **`R AX`**, el cual muestra el contenido del acumulador sin alterar ningún dato en memoria.
